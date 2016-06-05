@@ -13,12 +13,11 @@ struct Ingredient {
   unit: Option<String>,
 }
 
-// a lifetime var for Ingredient
 #[derive(RustcEncodable)]
-struct Recipe<'a> {
+struct Recipe {
   name: String,
   servings: u32,
-  ingredients: Vec<&'a Ingredient>,
+  ingredients: Vec<Ingredient>,
 }
 
 // Sample ingredients:
@@ -53,6 +52,26 @@ fn parse_ingredient(s: &str) -> Ingredient {
     }
 }
 
+fn parse_recipe(recipe_text: &str) -> Recipe {
+    // Assume lines looks like: [name, servings, ...ingredients]
+    let mut lines = recipe_text.split("\n");
+    let name = lines.next().unwrap(); // Grab name
+    let servings: u32 = lines.next() // Grab serving size from "serves 10" string
+        .unwrap().split(" ")
+        .nth(1).unwrap().parse().unwrap();
+
+    let ingredients: Vec<Ingredient> = lines
+      .collect::<Vec<&str>>()
+      .split_off(2).iter()
+      .map(|l| parse_ingredient(l)).collect();
+
+    Recipe {
+        name: name.to_string(),
+        servings: servings,
+        ingredients: ingredients,
+    }
+}
+
 fn main() {
     println!("Hello, world!");
     let mut f = File::open("recipes.txt").expect("Failed to open file.");
@@ -60,28 +79,10 @@ fn main() {
     f.read_to_string(&mut s);
     println!("{}", s);
 
-    let recipes_text = s.split("\n\n")
-        .map(|recipe_text| recipe_text.split("\n"));
-
-    // let blob: Vec<&str> = s.split("\n\n").collect();
-
-    // let v: Vec<&str> = s.split("\n\n").map();
-
-    // http://zsiciarz.github.io/24daysofrust/book/day6.html
-
-    let i = Ingredient {
-        name: "avocados".to_string(),
-        quantity: Some(3),
-        unit: None,
-    };
-
-    let r = Recipe {
-        name: "Avocado Salad".to_string(),
-        servings: 10,
-        ingredients: vec![&i],
-    };
+    let recipes: Vec<Recipe> = s.split("\n\n")
+        .map(|recipe_text| parse_recipe(recipe_text) )
+        .collect();
 
     // encode returns a Result (i.e. Either), which we dangerously unwrap (e.g. get the OK value)
-    println!("{}", json::encode(&r).unwrap());
-    println!("{}", json::encode(&i).unwrap());
+    println!("{}", json::encode(&recipes).unwrap());
 }
