@@ -1,12 +1,20 @@
 extern crate rustc_serialize;
 
+#[macro_use]
+extern crate lazy_static;
+
 use std::io::prelude::*;
 use std::fs::File;
 use rustc_serialize::json;
+use std::collections::HashSet;
 
-// Automatically generate `RustcDecodable` and `RustcEncodable` trait
-// implementations
-#[derive(RustcDecodable, RustcEncodable)]
+lazy_static! {
+    static ref UNITS: HashSet<String> = ["oz", "tbs", "tsp", "lbs", "kg", "g", "cups"]
+        .iter().map(|s| s.to_string()).collect();
+}
+
+// Automatically generate `RustcEncodable` trait implementation
+#[derive(RustcEncodable)]
 struct Ingredient {
   name: String,
   quantity: Option<u32>,
@@ -27,28 +35,38 @@ struct Recipe {
 // salt
 //
 fn parse_ingredient(s: &str) -> Ingredient {
-    let mut splits: Vec<&str> = s.split(" ").collect();
+    let splits: Vec<&str> = s.split(" ").collect();
 
     // Maybe grab first; if value exists, parse into int, and convert the Result to Option (with
     // ok()).
     let quantity: Option<u32> = splits.first()
         .and_then(|fst| fst.parse::<u32>().ok());
 
-    // TODO need to figure out how we will know if the first element was consumed or not? Or just
-    // set varialbe.
-    match quantity {
-        Some(q) => Ingredient {
-            name: splits.split_off(1).join(" "),
-            quantity: Some(q),
-            unit: None
-        },
-        None => {
-            Ingredient {
-                name: s.to_string(),
-                quantity: None,
-                unit: None
+    let unit: Option<String> = splits
+        .get(1)
+        .and_then(|u| {
+            let us: String = u.to_string();
+            if UNITS.contains(&us) {
+                Some(us)
+            } else {
+                None
             }
+
+        });
+
+
+    // TODO strip out the unit from the name
+    let name: String = match quantity {
+        None => s.to_string(),
+        _    => {
+            splits.clone().split_off(1).join(" ")
         },
+    };
+
+    Ingredient {
+        name: name,
+        quantity: quantity,
+        unit: unit,
     }
 }
 
@@ -65,6 +83,16 @@ fn parse_recipe(recipe_text: &str) -> Recipe {
       .split_off(2).iter()
       .map(|l| parse_ingredient(l)).collect();
 
+    // We create a Recipe here. When we return it, the owner of the Recipe is moved
+    // to the caller function.
+    //
+    // Underneath the hood, what happens? Recipe may be on the stack, and it may be
+    // copied into the return value location of the caller (Rust is smart enough to allocate)
+    // enough room for the returned value. Or the compiler may optimize this and
+    // eliminate the memcpy.
+    //
+    // http://rustbyexample.com/scope/move.html
+    // http://stackoverflow.com/questions/35033806/how-does-rust-deal-with-structs-as-function-parameters-and-return-values
     Recipe {
         name: name.to_string(),
         servings: servings,
@@ -75,14 +103,16 @@ fn parse_recipe(recipe_text: &str) -> Recipe {
 fn main() {
     println!("Hello, world!");
     let mut f = File::open("recipes.txt").expect("Failed to open file.");
-    let mut s = String::new();
-    f.read_to_string(&mut s);
-    println!("{}", s);
+    let mut contents = String::new();
+    f.read_to_string(&mut contents).expect("Failed to read file.");
 
-    let recipes: Vec<Recipe> = s.split("\n\n")
+    // File content
+    println!("{}", contents);
+
+    let recipes: Vec<Recipe> = contents.split("\n\n")
         .map(|recipe_text| parse_recipe(recipe_text) )
         .collect();
 
     // encode returns a Result (i.e. Either), which we dangerously unwrap (e.g. get the OK value)
-    println!("{}", json::encode(&recipes).unwrap());
+    println!("{}", json::as_pretty_json(&recipes));
 }

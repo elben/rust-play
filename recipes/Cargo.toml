@@ -5,3 +5,4 @@ authors = ["Elben Shira <elbenshira@gmail.com>"]
 
 [dependencies]
 rustc-serialize = "0.3.19"
+lazy_static = "0.1.*"
